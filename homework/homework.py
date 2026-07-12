@@ -49,6 +49,79 @@ def clean_campaign_data():
 
 
     """
+    import glob
+    import os
+    import zipfile
+    import pandas as pd
+
+    input_dir = "files/input"
+    output_dir = "files/output"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Lee y concatena todos los csv.zip sin descomprimirlos a disco
+    dfs = []
+    for zip_path in sorted(glob.glob(os.path.join(input_dir, "*.zip"))):
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            for name in zf.namelist():
+                if name.endswith(".csv"):
+                    with zf.open(name) as f:
+                        dfs.append(pd.read_csv(f))
+
+    df = pd.concat(dfs, ignore_index=True)
+
+    # ---------- client.csv ----------
+    client = df[
+        ["client_id", "age", "job", "marital", "education", "credit_default", "mortgage"]
+    ].copy()
+    client["job"] = (
+        client["job"].str.replace(".", "", regex=False).str.replace("-", "_", regex=False)
+    )
+    client["education"] = client["education"].str.replace(".", "_", regex=False)
+    client["education"] = client["education"].replace("unknown", pd.NA)
+    client["credit_default"] = (client["credit_default"] == "yes").astype(int)
+    client["mortgage"] = (client["mortgage"] == "yes").astype(int)
+    client.to_csv(os.path.join(output_dir, "client.csv"), index=False)
+
+    # ---------- campaign.csv ----------
+    campaign = df[
+        [
+            "client_id",
+            "number_contacts",
+            "contact_duration",
+            "previous_campaign_contacts",
+            "previous_outcome",
+            "campaign_outcome",
+            "day",
+            "month",
+        ]
+    ].copy()
+    campaign["previous_outcome"] = (campaign["previous_outcome"] == "success").astype(int)
+    campaign["campaign_outcome"] = (campaign["campaign_outcome"] == "yes").astype(int)
+
+    month_num = campaign["month"].str.strip().apply(
+        lambda m: pd.to_datetime(m, format="%b").month
+    )
+    campaign["last_contact_day"] = (
+        "2022-"
+        + month_num.astype(str).str.zfill(2)
+        + "-"
+        + campaign["day"].astype(str).str.zfill(2)
+    )
+    campaign = campaign.drop(columns=["day", "month"])
+    campaign = campaign.rename(
+        columns={"previous_campaign_contacts": "previous_campaing_contacts"}
+    )
+    campaign.to_csv(os.path.join(output_dir, "campaign.csv"), index=False)
+
+    # ---------- economics.csv ----------
+    economics = df[["client_id", "cons_price_idx", "euribor_three_months"]].copy()
+    economics = economics.rename(
+        columns={
+            "cons_price_idx": "const_price_idx",
+            "euribor_three_months": "eurobor_three_months",
+        }
+    )
+    economics.to_csv(os.path.join(output_dir, "economics.csv"), index=False)
 
     return
 
